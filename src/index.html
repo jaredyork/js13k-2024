@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+	<body>
+		<style>
+			body {
+    width: 100%;
+    height: 100%;
+    background: 
+        linear-gradient(90deg, #4b2e18 10%, #3a1f12 10%, #3a1f12 20%, #4b2e18 20%, #4b2e18 30%, #3a1f12 30%, #3a1f12 40%, #4b2e18 40%, #4b2e18 50%, #3a1f12 50%, #3a1f12 60%, #4b2e18 60%, #4b2e18 70%, #3a1f12 70%, #3a1f12 80%, #4b2e18 80%, #4b2e18 90%, #3a1f12 90%, #3a1f12 100%) 0/100px 100px,
+        linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.1) 75%, rgba(255,255,255,0.1) 100%) 0/15px 15px,
+        linear-gradient(135deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.05) 75%, rgba(255,255,255,0.05) 100%) 0/15px 15px,
+        linear-gradient(90deg, #5c2f20 10%, transparent 10%, transparent 90%, #5c2f20 90%, #5c2f20 100%) 0/10px 10px,
+        #3a1f12;
+    background-color: #3a1f12;
+    background-blend-mode: overlay, overlay, multiply, normal;
+			}
+
+			#overlay {
+				position: absolute;
+				width: 100%;
+				height: 100%;
+				display: flex;
+				flex-wrap: wrap;
+				flex-direction: row;
+				justify-content: center;
+				align-content: center;
+				pointer-events: none;
+				column-gap: 10px;
+				row-gap: 10px;
+			}
+
+			#game-wrap {
+				position: absolute;
+			}
+
+			#game {
+				display: block;
+				margin: 0 auto;
+				background: transparent;
+				width: auto;
+				height: 100vh;
+			}
+
+			.card {
+				background: rgb(176, 199, 235);
+				width: 256px;
+				height: 420px;
+				border: 10px solid #fff;
+				border-radius: 20px;
+				box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.75);
+			}
+
+			.card-header {
+				text-align: center;
+				padding-top: 16px;
+				padding-bottom: 16px;
+			}
+
+			.card-header > h3 {
+				border-top: 1px solid #fff;
+				border-bottom: 1px solid #fff;
+				padding-top: 0.5em;
+				padding-bottom: 0.5em;
+			}
+		</style>
+
+		<div id="game-wrap">
+			<canvas id="game"></canvas>
+		</div>
+
+		<div id="overlay"></div>
+
+		<script src="game.js"></script>
+	</body>
+</html>
