@@ -1,563 +1,538 @@
-document.addEventListener('DOMContentLoaded', () => {
-	let tick = 0;
+window.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('game');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
 
-	class Dimensions {
-		constructor(width, height) {
-			this.width = width;
-			this.height = height;
-		}
-	}
+    let shutterOuter = document.querySelector('.shutter-outer');
+    let gameEnd = document.querySelector('.game-end');
+    let gallery = document.querySelector('.gallery');
+    let galleryHeading = document.querySelector('.gallery-heading');
+    let clock = document.querySelector('.clock');
+    let resultsCategories = document.querySelector('.game-end .results-categories');
 
-	class Vector2 {
-		constructor(x, y) {
-			this.x = x;
-			this.y = y;
-		}
-	}
+    const tileSize = 8; // Size of each tile in pixels
+    const rows = Math.ceil(canvas.height / tileSize);
+    const cols = Math.ceil(canvas.width / tileSize);
 
-	class TextureGenerator {
-		constructor(w, h) {
-			this.canvas = document.createElement('canvas');
-			this.canvas.width = w;
-			this.canvas.height = h;
-			this.ctx = this.canvas.getContext('2d');
-		}
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    let tick = 0;
 
-		draw(callback) {
-			callback(this.canvas, this.ctx);
-		}
+    let snapshotMode = false;
+    let snapshotTick = 0;
+    const snapshotDuration = 50; // Duration of snapshot effect in frames
 
-		// Return texture as an Image
-		getTexture() {
-			const img = new Image();
-			img.src = this.canvas.toDataURL();
-			return img;
-		}
-	}
-	  
-	// Example usage
-	const texGen = new TextureGenerator(150, 150);
-	texGen.draw((canv, c) => {
-		const w = canv.width;
-		const h = canv.height;
-		const r = Math.min(w, h) / 2 - 10;
-		const cx = w / 2;
-		const cy = h / 2;
-	  
-		// Ensure radius is positive
-		const r0 = Math.max(r * 0.5, 1);
-	  
-		// Radial gradient for gold effect
-		const grad = c.createRadialGradient(cx, cy, r0, cx, cy, r);
-		grad.addColorStop(0, '#ffd700'); // Gold
-		grad.addColorStop(0.5, '#ffcc00'); // Light gold
-		grad.addColorStop(1, '#b8860b'); // Dark gold
-	  
-		c.fillStyle = grad;
-		c.beginPath();
-		c.arc(cx, cy, r, 0, 2 * Math.PI);
-		c.fill();
-		
-		// Border
-		c.lineWidth = 5;
-		c.strokeStyle = '#b8860b'; // Dark gold
-		c.stroke();
-	  
-		// Pirate ship imprint
-		c.fillStyle = '#000'; // Black color for the imprint
-	  
-		// Draw the ship hull
-		c.beginPath();
-		c.moveTo(cx - 20, cy + 10);
-		c.lineTo(cx + 20, cy + 10);
-		c.lineTo(cx + 15, cy + 20);
-		c.lineTo(cx - 15, cy + 20);
-		c.closePath();
-		c.fill();
-	  
-		// Draw the ship's mast
-		c.beginPath();
-		c.moveTo(cx, cy + 10);
-		c.lineTo(cx, cy - 20);
-		c.lineWidth = 2;
-		c.strokeStyle = '#000';
-		c.stroke();
-	  
-		// Draw the sails
-		c.beginPath();
-		// Lower sail
-		c.moveTo(cx, cy - 10);
-		c.lineTo(cx + 12, cy);
-		c.lineTo(cx, cy);
-		c.closePath();
-		c.fill();
-	  
-		// Upper sail
-		c.beginPath();
-		c.moveTo(cx, cy - 15);
-		c.lineTo(cx + 8, cy - 10);
-		c.lineTo(cx, cy - 10);
-		c.closePath();
-		c.fill();
-	  
-		// Optional: Add a pirate flag
-		c.beginPath();
-		c.moveTo(cx, cy - 20);
-		c.lineTo(cx + 10, cy - 15);
-		c.lineTo(cx, cy - 15);
-		c.closePath();
-		c.fill();
-	});
-	const texImg = texGen.getTexture();
-	
+    function interpolateColor(start, end, factor) {
+        return {
+            r: Math.round(start.r + (end.r - start.r) * factor),
+            g: Math.round(start.g + (end.g - start.g) * factor),
+            b: Math.round(start.b + (end.b - start.b) * factor)
+        };
+    };
 
-	class Color {
-		constructor(r, g, b) {
-			if (g === undefined) {
-				r = parseInt(r.slice(1), 16);
-				this.r = r >> 16;
-				this.g = (r >> 8) & 255;
-				this.b = r & 255;
-				this.hex = `#${r.toString(16).padStart(6, '0').toUpperCase()}`;
-			} else {
-				this.r = r;
-				this.g = g;
-				this.b = b;
-				this.hex = `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0').toUpperCase()}`;
-			}
-		}
-		toRgb() { return `rgb(${this.r},${this.g},${this.b})`; }
-		toHex() { return this.hex; }
-	}
-	
-	const BLACK = new Color(0, 0, 0);
-	const WHITE = new Color(255, 255, 255);
-
-	function snapToGrid(value, gridSize) {
-	    return Math.round(value / gridSize) * gridSize;
-	}
-
-	function getContrastColor(color) {
-		let r = color.r;
-		let g = color.g;
-		let b = color.b;
-
-		// Calculate the relative luminance of the color
-		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	
-		// If the luminance is greater than 0.5, the color is light, so return black.
-		// Otherwise, return white.
-		return luminance > 0.5 ? BLACK : WHITE;
-	}
-
-	let array2d = (r, c) => Array.from({ length: r }, () => Array(c));
-
-	let canvas = document.getElementById('game');
-	canvas.width = 1280;
-	canvas.height = 720;
-	let ctx = canvas.getContext('2d');
-
-	let overlay = document.getElementById('overlay');
-
-	class CardInterface {
-		constructor() {
-			this.title = '';
-			overlay.html = '';
-		}
-
-		close() {
-			overlay.html = '';
-		}
-
-		open(c) {
-			console.log('opening card: ', c);
-			this.close();
-
-			// card html
-			let card = document.createElement('div');
-			card.classList.add('card');
-
-			let header = document.createElement('header');
-			header.classList.add('card-header');
-			header.style.backgroundColor = c.color.toHex();
-
-			if (c.title !== undefined) {
-				let title = document.createElement('h3');
-				title.style.color =  getContrastColor(c.color).toHex();
-				title.innerHTML = c.title;
-				
-				header.appendChild(title);
-			}
-
-			let icon = document.createElement('img');
-			icon.src = texImg.src;
-			header.append(icon);
-
-			card.appendChild(header);
-
-			overlay.appendChild(card);
-		}
-	}
-
-	const cardInterface = new CardInterface();
-
-
-	/**
-	 * INPUT
-	 */
-	let mousePos = new Vector2(0, 0);
-
-    function getMousePos(event) {
-        const rect = canvas.getBoundingClientRect(); // Get canvas position
-        const scaleX = canvas.width / rect.width;    // Scaling factor for width
-        const scaleY = canvas.height / rect.height;  // Scaling factor for height
-
-        const mouseX = (event.clientX - rect.left) * scaleX; // Adjust mouse X position
-        const mouseY = (event.clientY - rect.top) * scaleY;  // Adjust mouse Y position
-
-        return { x: mouseX, y: mouseY };
+    function snapToGrid(val, gridSize) {
+        return gridSize * Math.round(val / gridSize);
     }
 
-    function handleMouseMove(event) {
-        let pos = getMousePos(event);
-        mousePos = new Vector2(pos.x, pos.y);
+    function noise2d(x, y, seed = 0) {
+        function fade(t) { return t * t * (3 - 2 * t); }
+        function lerp(a, b, t) { return a + t * (b - a); }
+
+        function random2D(ix, iy, seed) {
+            const n = ix + iy * 57 + seed * 131;
+            return Math.sin(n) * 43758.5453 - Math.floor(Math.sin(n) * 43758.5453);
+        }
+
+        const x0 = Math.floor(x), x1 = x0 + 1;
+        const y0 = Math.floor(y), y1 = y0 + 1;
+
+        const sx = fade(x - x0);
+        const sy = fade(y - y0);
+
+        const n0 = random2D(x0, y0, seed);
+        const n1 = random2D(x1, y0, seed);
+        const ix0 = lerp(n0, n1, sx);
+
+        const n2 = random2D(x0, y1, seed);
+        const n3 = random2D(x1, y1, seed);
+        const ix1 = lerp(n2, n3, sx);
+
+        return lerp(ix0, ix1, sy);
     }
 
-    canvas.addEventListener('mousemove', handleMouseMove);
-
-
-
-	/**
-	 * UTILITY FUNCTIONS
-	 */
-	function randInt(min, max) {
-	    return Math.floor(Math.random() * (max - min + 1)) + min;
-	}
-
-	function noise2d(x, y, seed = 0) {
-	    function fade(t) { return t * t * (3 - 2 * t); }
-	    function lerp(a, b, t) { return a + t * (b - a); }
-
-	    function random2D(ix, iy, seed) {
-	        const n = ix + iy * 57 + seed * 131;
-	        return Math.sin(n) * 43758.5453 - Math.floor(Math.sin(n) * 43758.5453);
-	    }
-
-	    const x0 = Math.floor(x), x1 = x0 + 1;
-	    const y0 = Math.floor(y), y1 = y0 + 1;
-
-	    const sx = fade(x - x0);
-	    const sy = fade(y - y0);
-
-	    const n0 = random2D(x0, y0, seed);
-	    const n1 = random2D(x1, y0, seed);
-	    const ix0 = lerp(n0, n1, sx);
-
-	    const n2 = random2D(x0, y1, seed);
-	    const n3 = random2D(x1, y1, seed);
-	    const ix1 = lerp(n2, n3, sx);
-
-	    return lerp(ix0, ix1, sy);
-	}
-
-	class Card {
-		constructor(world, x, y) {
-			this.world = world;
-			this.x = x;
-			this.y = y;
-			this.width = this.world.cardSize.width;
-			this.height = this.world.cardSize.height;
-			this.color = '';
-			this.isHighlighted = false;
-			this.isFlipping = false;
-			this.isFlipped = false;
-	        this.flipProgress = 0; // 0 to 1, where 1 is fully flipped
-	        this.flipSpeed = 0.05; // Speed of the flip
-			this.offset = new Vector2(0, 0);
-		}
-
-		flip() {
-	        this.flipProgress = 0; // 0 to 1, where 1 is fully flipped
-			this.isFlipping = true;
-			this.isFlipped = false;
-		}
-
-	    updateFlip() {
-	        if (this.isFlipping) {
-	            this.flipProgress += this.flipSpeed;
-	            if (this.flipProgress >= 1) {
-	                this.flipProgress = 1;
-	                this.isFlipping = false;
-	                this.isFlipped = true;
-	            }
-	        }
-	    }
-
-	    render() {
-	        this.updateFlip();
-
-	        // Calculate the scale factor for horizontal flipping
-	        const scaleX = this.isFlipping ? Math.max(0, 1 - this.flipProgress * 2) : 1;
-
-	        // Calculate the offset to keep the card in place
-	        const offsetX = this.width * (1 - scaleX) / 2;
-
-	        // Save context state
-	        ctx.save();
-
-	        // Translate to the card's position
-	        ctx.translate(this.x + offsetX, this.y);
-
-	        // Flip horizontally by scaling
-	        ctx.scale(scaleX, 1);
-
-	        // Render card
-	        ctx.fillStyle = this.color.toHex();
-	        ctx.beginPath();
-	        ctx.roundRect(0, 0, this.width, this.height, this.world.cardEdgeRadius);
-	        ctx.fill();
-
-	        ctx.fillStyle = '#ffffff';
-	        ctx.globalAlpha = 0.15;
-	        ctx.fillRect(0, this.world.cardGap, this.width, this.height * 0.15);
-	        ctx.fillRect(0, this.height - this.world.cardGap * 2.5, this.width, this.height * 0.15);
-	        ctx.globalAlpha = 1;
-
-	        // Restore context state
-	        ctx.restore();
-
-	        /*
-	        ctx.fillStyle = '#ffffff';
-	        ctx.globalAlpha = 0.25;
-	        ctx.font = 'bold 20px sans-serif';
-	        ctx.fillText(
-	        	'?',
-	        	this.x + (this.world.cardSize.width * 0.5),
-	        	this.y + (this.world.cardSize.height * 0.5)
-	        );
-	        ctx.globalAlpha = 1;
-	        */
-	    }
-
-		renderHighlight() {
-			if (this.isFlipping) {
-				return;
-			}
-
-			ctx.fillStyle = '#ffffff';
-			ctx.globalAlpha = Math.abs(Math.sin(tick * 0.1));
-			ctx.roundRect(this.x + this.offset.x, this.y + this.offset.y, this.width, this.height, this.world.cardEdgeRadius);
-			ctx.fill();
-			ctx.globalAlpha = 1;
-		}
-	}
-
-	class World {
-		constructor(game) {
-			this.game = game;
-
-			this.cardSize = new Dimensions(32, 45);
-			this.cardGap = Math.floor(this.cardSize.width / 6);
-			this.cardEdgeRadius = Math.floor(this.cardSize.width / 6);
-
-			let mapWidth = Math.floor(canvas.width / this.cardSize.width);
-			this.mapWidth = mapWidth + (mapWidth * this.cardGap);
-			let mapHeight = Math.floor(canvas.height / this.cardSize.height);
-			this.mapHeight = mapHeight + (mapHeight * this.cardGap);
-
-			this.cursorRequestors = [];
-
-			this.cardMap = array2d(this.mapWidth, this.mapHeight);
-
-			this.seed = randInt(0, 25565);
-
-			this.generateSeas();
-
-			canvas.addEventListener('click', () => {
-				console.log('clicked');
-
-				for (let x = 0; x < this.cardMap.length; x++) {
-					for (let y = 0; y < this.cardMap[x].length; y++) {
-						let card = this.cardMap[x][y];
-
-						if (card.isHighlighted) {
-
-							card.flip();
-
-							cardInterface.open(card);
-						}
-					}
-				}
-			});
-		}
-
-		generateSeas() {
-			console.log('Generating seas (' + this.mapWidth + ', ' + this.mapHeight + ') with seed: ', this.seed);
-			for (let x = 0; x < this.mapWidth; x++) {
-				for (let y = 0; y < this.mapHeight; y++) {
-					let card = new Card(this, (x * this.cardSize.width) + (x * this.cardGap), (y * this.cardSize.height) + (y * this.cardGap));
-					card.title = 'Test Card';
-					let noise = noise2d(x / 3, y / 3, this.seed);
-					console.log(noise);
-					let greyValue = noise * 255;
-
-					let color = new Color( greyValue, greyValue, greyValue );
-
-					if (noise < 0.4) {
-						card.title = 'DEEP SEA';
-					}
-					else if (noise < 0.7) {
-						card.title = 'SHALLOW SEA';
-					}
-
-
-					if (noise < 0.65) {
-						color = new Color( 0, 0, snapToGrid(greyValue, 50) );
-					}
-					else if (noise >= 0.65 && noise < 0.8) {
-						color = new Color(200, 170, greyValue );
-						console.log('GENERATING SAND');
-						card.title = 'BEACH';
-					}
-					else {
-						color = new Color(0, Math.floor(greyValue * 0.65), 0);
-						card.title = 'GRASS HILLS';
-					}
-
-					card.color = new Color(20, 20, 20);
-
-					this.cardMap[x][y] = card;
-				}
-			}
-			console.log('Generated seas: ', this.cardMap);
-		}
-
-		render() {
-			for (let x = 0; x < this.cardMap.length; x++) {
-				for (let y = 0; y < this.cardMap[x].length; y++) {
-					let card = this.cardMap[x][y];
-
-					card.render();
-
-					if (mousePos.x > card.x && mousePos.x < card.x + this.cardSize.width &&
-						mousePos.y > card.y && mousePos.y < card.y + this.cardSize.height) {
-						card.isHighlighted = true;
-						this.game.addCursorRequestor('c-' + x + '-' + y, 'pointer');
-					}
-					else {
-						card.isHighlighted = false;
-						this.game.removeCursorRequestor('c-' + x + '-' + y);
-					}
-
-					if (card.isHighlighted) {
-						card.renderHighlight();
-					}
-				}
-			}
-		}
-	}
-
-	class Game {
-		constructor() {
-			this.world = new World(this);
-
-			this.cursorRequestors = [];
-
-			this.startLoop();
-		}
-
-		addCursorRequestor(key, cursor) {
-			let alreadyExists = false;
-			for (let i = 0; i < this.cursorRequestors.length; i++) {
-				if (this.cursorRequestors[i].key == key) {
-					alreadyExists = true;
-				}
-			}
-
-			if (alreadyExists) {
-				return false;
-			}
-
-			this.cursorRequestors.push({ key: key, cursor: cursor });
-
-			return true;
-		}
-
-		removeCursorRequestor(key) {
-			for (let i = 0; i < this.cursorRequestors.length; i++) {
-				if (this.cursorRequestors[i].key == key) {
-					this.cursorRequestors.splice(i, 1);
-					i--;
-				}
-			}
-		}
-
-		parseCursorRequests() {
-			if (this.cursorRequestors.length > 0) {
-				canvas.style.cursor = 'pointer';
-			}
-			else {
-				canvas.style.cursor = 'default';
-			}
-		}
-
-		update() {
-			this.parseCursorRequests();
-			tick++;
-		}
-
-		render() {
-			ctx.clearRect(0, 0, canvas.width, canvas.height);
-			this.world.render();
-		}
-
-		loop() {
-			this.update();
-			this.render();
-			window.requestAnimationFrame(this.loop.bind(this));
-		}
-
-		startLoop() {
-			console.log('starting loop');
-			this.loop();
-		}
-	}
-
-	const game = new Game();
-
-	const canvasZIndex = parseInt(window.getComputedStyle(canvas).zIndex) || 0;
-
-	document.addEventListener("mousemove", function(event) {
-		const elementUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
-	
-		if (elementUnderMouse !== canvas) {
-			const elementZIndex = parseInt(window.getComputedStyle(elementUnderMouse).zIndex) || 0;
-	
-			if (elementZIndex > canvasZIndex) {
-				// Stop mouse input to the canvas
-				game.cursorRequestors.length = 0;
-				canvas.style.pointerEvents = 'none';
-			} else {
-				// Allow mouse input to the canvas
-				canvas.style.pointerEvents = 'auto';
-			}
-		}
-	});
-	
-	canvas.addEventListener("click", function(event) {
-		const elementUnderMouse = document.elementFromPoint(event.clientX, event.clientY);
-		const elementZIndex = parseInt(window.getComputedStyle(elementUnderMouse).zIndex) || 0;
-	
-		if (elementUnderMouse !== canvas && elementZIndex > canvasZIndex) {
-			game.cursorRequestors.length = 0;
-			// An element with a higher z-index is on top of the canvas, so ignore the click
-			event.stopImmediatePropagation();
-			return;
-		}
-	
-		// Handle the click event on the canvas here
-		console.log("Canvas clicked!");
-	});
+    class Game {
+        constructor() {
+            this.seed = Math.random() * 25565;
+
+            this.photos = [];
+
+            this.trees = [];
+
+            this.isFinished = false;
+            
+            // Create off-screen canvas for trees
+            this.treeCanvas = document.createElement('canvas');
+            this.treeCanvas.width = canvas.width;
+            this.treeCanvas.height = canvas.height;
+            this.treeCtx = this.treeCanvas.getContext('2d');
+
+            this.skyColor = { r: 100, g: 150, b: 255 };
+            this.darkenFactor = 0.1; // Adjust darkening factor here
+
+            // Adjust the length and start positions of the lines
+            for (let i = 0; i < 5000; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+
+                // Start positions further out from the center
+                const startRadius = Math.random() * (canvas.width / 2 - 50); // Start further from the center
+                const x1 = centerX + Math.cos(angle) * (startRadius + 300);
+                const y1 = centerY + Math.sin(angle) * (startRadius + 300);
+                const distanceFromCenter = Math.hypot(x1 - centerX, y1 - centerY);
+                const maxTreeLength = canvas.height / 2; // Maximum length to cover the canvas
+                const length = maxTreeLength * (distanceFromCenter / (canvas.width / 2)); // Extend to edges
+                const width = Math.min(20, 2 + (distanceFromCenter / (canvas.width / 2)) * 10); // Increase width
+
+                const x2 = centerX + Math.cos(angle) * (startRadius + length);
+                const y2 = centerY + Math.sin(angle) * (startRadius + length);
+
+                // Ensure that tree lines do not intersect with the center empty area
+                if (Math.hypot(x1 - centerX, y1 - centerY) < canvas.width / 4 && 
+                    Math.hypot(x2 - centerX, y2 - centerY) < canvas.width / 4) {
+                    continue; // Skip adding this tree if it intersects with the empty area
+                }
+
+                this.trees.push({
+                    x1: x1,
+                    y1: y1,
+                    x2: x2,
+                    y2: y2,
+                    width: width,
+                });
+            }
+            
+            // Render trees to the off-screen canvas
+            this.renderTrees();
+            this.gameloop();
+        }
+
+        drawTile(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, tileSize, tileSize);
+        }
+
+        drawSky() {
+            const darkenedColor = interpolateColor(this.skyColor, { r: 0, g: 0, b: 0 }, this.darkenFactor * (tick / 100));
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = `rgb(${darkenedColor.r},${darkenedColor.g},${darkenedColor.b})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+        }
+
+        drawAurora() {
+            const layers = 4; // Increase layers for a richer effect
+        
+            for (let layer = 0; layer < layers; layer++) {
+                let layerOffset = layer * 0.05;
+                let speedMultiplier = 0.0001 + (Math.pow(layer + 1, 2) * 0.75) * 0.01; // Adjusted speed multiplier for smoother motion
+        
+                for (let x = 0; x < cols; x++) {
+                    for (let y = 0; y < rows; y++) {
+                        let p = noise2d((x * 0.5 + tick * speedMultiplier) / (3 + layer), (y * 0.5 + tick * speedMultiplier + layerOffset) / (3 + layer), this.seed);
+        
+                        let val = Math.pow(p, 1.5) * 255; // Smooth color transitions
+                        let green = Math.min(val * 1.2, 200);
+                        let blue = Math.min(val * 0.6 + Math.sin((tick + layerOffset) * 0.05) * 40, 180); // Adjusted sine function for smoother transitions
+                        let red = Math.min(val * 0.2 + Math.cos((tick + layerOffset) * 0.005) * 30, 150); // Adjusted cosine function for smoother transitions
+        
+                        let alphap = noise2d((x * 0.2 + tick * speedMultiplier) / 500, (y * 0.2 + tick * speedMultiplier + layerOffset) / 500);
+        
+                        let alpha = (Math.pow(p, 2) * 0.3 + 0.1 * (1 / (layer + 1))) - alphap;
+                        alpha = Math.max(0, Math.min(alpha, 1)); // Ensure alpha is within bounds
+        
+                        // Apply snapshot effect
+                        if (snapshotMode) {
+                            let snapshotFactor = snapshotTick / snapshotDuration;
+                            canvas.style.border = '4px solid rgba(' + (snapshotFactor * 255) + ',' + (snapshotFactor * 255) + ',' + (snapshotFactor * 255) + ', 1)';
+                            green = Math.min(green * (1 + snapshotFactor * 0.2), 255);
+                            blue = Math.min(blue * (1 + snapshotFactor * 0.2), 255);
+                            red = Math.min(red * (1 + snapshotFactor * 0.2), 255);
+                            alpha = Math.min(alpha * (1 + snapshotFactor * 0.4), 1);
+                        }
+        
+                        ctx.fillStyle = `rgba(${Math.round(red)}, ${Math.round(green)}, ${Math.round(blue)}, ${alpha})`;
+                        ctx.fillRect(
+                            x * tileSize,
+                            y * tileSize,
+                            tileSize,
+                            tileSize
+                        );
+                    }
+                }
+            }
+        }
+        
+        
+        
+
+        renderTrees() {
+            this.treeCtx.clearRect(0, 0, this.treeCanvas.width, this.treeCanvas.height);
+
+            // Define the start and end colors for the trees
+            const startColor = { r: 250, g: 120, b: 0 }; // Dark green
+            const endColor = { r: 15, g: 15, b: 30 };    // Black
+
+            // Function to interpolate colors
+            function interpolateColor(start, end, factor) {
+                return {
+                    r: Math.round(start.r + (end.r - start.r) * factor),
+                    g: Math.round(start.g + (end.g - start.g) * factor),
+                    b: Math.round(start.b + (end.b - start.b) * factor)
+                };
+            }
+
+            // Calculate darkening factor based on tick
+            const maxTicks = 1000; // Number of ticks for a full transition
+            const darkenFactor = Math.min(1, tick / maxTicks); // Ensure the factor is between 0 and 1
+
+            // Calculate the tree color based on the time
+            const baseColor = interpolateColor(startColor, endColor, darkenFactor);
+
+            // Get the center of the canvas
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Function to calculate darkness based on distance from the center
+            function getDarknessFactor(x, y) {
+                const distance = Math.hypot(x - centerX, y - centerY);
+                const maxDistance = Math.hypot(centerX, centerY);
+                return Math.min(1, distance / maxDistance);
+            }
+
+            for (let i = 0; i < this.trees.length; i++) {
+                let tree = this.trees[i];
+
+                const dx = tree.x2 - tree.x1;
+                const dy = tree.y2 - tree.y1;
+                const lineLength = Math.sqrt(dx * dx + dy * dy);
+                const numTiles = Math.ceil(lineLength / tileSize);
+
+                for (let j = 0; j < numTiles; j++) {
+                    const t = j / numTiles;
+                    const tx = tree.x1 + dx * t;
+                    const ty = tree.y1 + dy * t;
+
+                    const gridX = snapToGrid(tx - tree.width / 2, tileSize);
+                    const gridY = snapToGrid(ty - tree.width / 2, tileSize);
+
+                    // Calculate the darkness based on the distance from the center
+                    const darknessFactor = getDarknessFactor(tx, ty);
+                    const finalColor = interpolateColor(baseColor, endColor, darknessFactor);
+
+                    this.treeCtx.fillStyle = `rgb(${finalColor.r}, ${finalColor.g}, ${finalColor.b})`;
+                    this.treeCtx.fillRect(gridX, gridY, tileSize, tileSize); // Draw filled tile
+                }
+            }
+
+            ctx.drawImage(this.treeCanvas, 0, 0); // Draw the off-screen canvas to the main canvas
+        }
+
+        updateClock() {
+            if (this.isFinished) {
+                return;
+            }
+
+            // Simulate time: Start at 8 PM and increment
+            const startHour = 20;
+            const totalMinutes = ((startHour + ((tick * 0.25) / 60)) % 24) * 60;
+            const now = new Date();
+            now.setHours(Math.floor(totalMinutes / 60));
+            now.setMinutes(totalMinutes % 60);
+            now.setSeconds(0);
+
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+
+            const formattedHours = hours % 12 || 12;
+            const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+            const formattedSeconds = seconds < 10 ? `0${seconds}` : seconds;
+
+            const timeString = `${formattedHours}:${formattedMinutes}:${formattedSeconds} ${ampm}`;
+            clock.innerHTML = timeString;
+
+            if (formattedHours == 8 && ampm == 'AM') {
+                this.endGame();
+            }
+        }
+
+        snapShotEffect() {
+            snapshotMode = true;
+            snapshotTick = 0;
+        }
+
+        calculateSharpness(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            let sum = 0;
+
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = (y * width + x) * 4;
+                    const gx = (
+                        -data[i - width * 4 - 4] - 2 * data[i - 4] - data[i + width * 4 - 4] +
+                        data[i - width * 4 + 4] + 2 * data[i + 4] + data[i + width * 4 + 4]
+                    );
+                    const gy = (
+                        -data[i - width * 4 - 4] - 2 * data[i - width * 4] - data[i - width * 4 + 4] +
+                        data[i + width * 4 - 4] + 2 * data[i + width * 4] + data[i + width * 4 + 4]
+                    );
+                    sum += gx * gx + gy * gy;
+                }
+            }
+            return sum;
+        }
+
+        calculateContrast(imageData) {
+            const data = imageData.data;
+            let sum = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const gray = (r + g + b) / 3;
+                sum += gray * gray;
+            }
+            const mean = sum / (data.length / 4);
+            return Math.sqrt(mean);
+        }
+
+        analyzeColorDistribution(imageData) {
+            const data = imageData.data;
+            let hSum = 0, sSum = 0, vSum = 0, count = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i] / 255;
+                const g = data[i + 1] / 255;
+                const b = data[i + 2] / 255;
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                const delta = max - min;
+
+                let h = 0;
+                if (delta === 0) {
+                    h = 0;
+                } else if (max === r) {
+                    h = ((g - b) / delta) % 6;
+                } else if (max === g) {
+                    h = (b - r) / delta + 2;
+                } else {
+                    h = (r - g) / delta + 4;
+                }
+                h = (h * 60 + 360) % 360;
+
+                const s = max === 0 ? 0 : delta / max;
+                const v = max;
+
+                hSum += h;
+                sSum += s;
+                vSum += v;
+                count++;
+            }
+
+            return [hSum / count, sSum / count, vSum / count];
+        }
+
+        assignSharpnessPoints(sharpness) {
+            if (sharpness <= 500) return 0;
+            if (sharpness <= 1000) return 1;
+            if (sharpness <= 1500) return 2;
+            return 3;
+        }
+
+        assignContrastPoints(contrast) {
+            if (contrast <= 50) return 0;
+            if (contrast <= 100) return 1;
+            if (contrast <= 150) return 2;
+            return 3;
+        }
+
+        assignColorPoints(colorDistribution) {
+            const [h, s, v] = colorDistribution;
+            // Example thresholds - adjust as needed
+            if (s < 0.2) return 0; // Low saturation
+            if (s < 0.5) return 1; // Moderate saturation
+            if (s < 0.8) return 2; // Good saturation
+            return 3; // Excellent saturation
+        }
+
+        async judgeImages(dataURLs) {
+            const scores = {
+                sharpness: [],
+                contrast: [],
+                colorDistribution: []
+            };
+        
+            // Helper function to process each image
+            function processImage(dataURL) {
+                return new Promise((resolve, reject) => {
+                    // Create a temporary canvas
+                    const canv = document.createElement('canvas');
+                    const ctx = canv.getContext('2d');
+                    const img = new Image();
+        
+                    img.onload = function() {
+                        canv.width = img.width;
+                        canv.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+        
+                        const imageData = ctx.getImageData(0, 0, canv.width, canv.height);
+        
+                        // Calculate metrics
+                        const sharpness = this.calculateSharpness(imageData);
+                        const contrast = this.calculateContrast(imageData);
+                        const colorDistribution = this.analyzeColorDistribution(imageData);
+        
+                        const sharpnessPoints = this.assignSharpnessPoints(sharpness);
+                        const contrastPoints = this.assignContrastPoints(contrast);
+                        const colorPoints = this.assignColorPoints(colorDistribution);
+        
+                        scores.sharpness.push(sharpnessPoints);
+                        scores.contrast.push(contrastPoints);
+                        scores.colorDistribution.push(colorPoints);
+        
+                        canv.remove();
+        
+                        resolve({
+                            sharpness: sharpnessPoints,
+                            contrast: contrastPoints,
+                            colorDistribution: colorPoints
+                        });
+                    }.bind(this);
+        
+                    img.onerror = function() {
+                        canv.remove();
+                        reject(new Error(`Failed to load image: ${dataURL}`));
+                    };
+        
+                    img.src = dataURL;
+                });
+            }
+        
+            // Process all images and wait for all to complete
+            try {
+                await Promise.all(dataURLs.map(processImage.bind(this)));
+        
+                // Calculate averages once all images are processed
+                const avgSharpness = scores.sharpness.reduce((a, b) => a + b, 0) / scores.sharpness.length;
+                const avgContrast = scores.contrast.reduce((a, b) => a + b, 0) / scores.contrast.length;
+                const avgColor = scores.colorDistribution.reduce((a, b) => a + b, 0) / scores.colorDistribution.length;
+        
+                return {
+                    avgSharpness: avgSharpness,
+                    avgContrast: avgContrast,
+                    avgColor: avgColor
+                };
+            } catch (error) {
+                console.error('Error processing images:', error);
+                throw error;
+            }
+        }
+        
+
+        endGame() {
+            this.isFinished = true;
+
+            if (canvas) {
+                canvas.remove();
+            }
+
+            shutterOuter.style.display = 'none';
+            gameEnd.style.display = 'block';
+
+            (async () => {
+                let scores = await this.judgeImages(this.photos);
+
+                let sharpness = document.createElement('p');
+                sharpness.innerHTML = '<span class="cat">Sharpness:</span> ' + scores.avgSharpness.toFixed(2);
+                gameEnd.appendChild(sharpness);
+                let contrast = document.createElement('p');
+                contrast.innerHTML = '<span class="cat">Contrast:</span> ' + scores.avgContrast.toFixed(2);
+                gameEnd.appendChild(contrast);
+                let color = document.createElement('p');
+                color.innerHTML = '<span>Color Distribution:</span> ' + scores.avgColor.toFixed(2);
+                gameEnd.appendChild(color);
+            })();
+        }
+
+        gameloop() {
+            // Capture the frame before clearing the canvas
+            if (snapshotMode) {
+                snapshotTick++;
+                if (snapshotTick >= snapshotDuration) {
+                    canvas.style.border = '4px solid rgba(0, 0, 0, 0)';
+
+                    const dataURL = canvas.toDataURL('image/png');
+
+                    let tempCanvas = document.createElement('canvas');
+                    let tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.imageSmoothingEnabled = false;
+                    tempCtx.mozImageSmoothingEnabled = false;
+                    tempCanvas.width = canvas.width / 4;
+                    tempCanvas.height = canvas.height / 4;
+                    tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
+                    let tempDataURL = tempCanvas.toDataURL('image/png');
+                    
+                    let photo = document.createElement('img');
+                    photo.src = tempDataURL;
+                    // Generate a random rotation value between -5 and 5 degrees
+                    const randomDegrees = (Math.random() * 10 - 5).toFixed(2); // ±5 degrees
+                    
+                    // Calculate the new rotation
+                    const newRotation = (parseFloat(randomDegrees)) % 360;
+                    
+                    // Apply the new rotation
+                    photo.style.transform = `rotate(${newRotation}deg)`;
+                    photo.classList.add('photo');
+                    if (gallery.querySelectorAll('p').length > 0) {
+                        gallery.innerHTML = '';
+                    }
+                    gallery.appendChild(photo);
+                    
+                    this.photos.push(tempDataURL);
+
+                    galleryHeading.innerHTML = 'Gallery (' + this.photos.length + ' / 13 taken)';
+
+                    snapshotMode = false; // End snapshot mode after taking the snapshot
+
+                    if (this.photos.length === 13) {
+                        this.endGame();
+                    }
+                }
+            }
+            
+            // Clear the canvas at the start of the frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Perform drawing operations
+            this.drawSky();
+            this.drawAurora();
+            this.renderTrees();
+            this.updateClock();
+            
+            tick++;
+            requestAnimationFrame(() => this.gameloop());
+        }
+    }
+
+    const game = new Game();
+
+    // Trigger snapshot effect when the 'snapshot' button is clicked
+    document.getElementById('snapshotButton').addEventListener('click', () => {
+        game.snapShotEffect();
+    });
 
 });
-
